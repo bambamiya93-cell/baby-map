@@ -148,6 +148,19 @@
   .opt:hover{border-color:var(--sage)}
   .opt.on{border-color:transparent;color:#fff}
 
+  .addr-search{display:flex;gap:8px;margin-bottom:8px}
+  .addr-search .input{flex:1}
+  .addr-search .btn-soft{flex:none;padding:0 16px;white-space:nowrap}
+  .search-results{display:none;border:1.5px solid var(--line);border-radius:var(--r-sm);overflow:hidden;margin-bottom:8px}
+  .search-results.on{display:block}
+  .search-item{padding:10px 12px;font-size:13px;color:var(--ink);border-bottom:1px solid var(--line-soft);
+    cursor:pointer;transition:.1s;line-height:1.4}
+  .search-item:last-child{border-bottom:none}
+  .search-item:hover{background:var(--good-wash)}
+  .search-item .si-name{font-weight:600}
+  .search-item .si-sub{font-size:11.5px;color:var(--ink-faint);margin-top:2px}
+  .search-item.msg{color:var(--ink-faint);cursor:default}
+  .search-item.msg:hover{background:none}
   .locpick{border:1.5px dashed var(--line);border-radius:var(--r-sm);padding:12px;background:var(--surface-warm);
     font-size:13px;color:var(--ink-soft);display:flex;align-items:center;gap:10px}
   .locpick.set{border-style:solid;border-color:var(--sage);background:var(--good-wash);color:#33614A;font-weight:600}
@@ -272,8 +285,13 @@
             <div class="opts" id="catOpts"></div>
           </div>
           <div class="field">
-            <label>위치 <span class="req">*</span><span class="help">지도를 눌러 핀을 찍어요</span></label>
-            <div class="locpick" id="locPick"><span class="ic">📍</span><span id="locText">지도에서 위치를 눌러 주세요</span></div>
+            <label>위치 <span class="req">*</span><span class="help">검색하거나 지도를 눌러요</span></label>
+            <div class="addr-search">
+              <input class="input" id="addrSearch" placeholder="주소·장소 검색 (예: 세종호수공원)" maxlength="80" />
+              <button class="btn-soft" id="addrSearchBtn" type="button">검색</button>
+            </div>
+            <div class="search-results" id="searchResults"></div>
+            <div class="locpick" id="locPick"><span class="ic">📍</span><span id="locText">검색 결과를 고르거나, 지도를 눌러 주세요</span></div>
             <input class="input" id="fAddr" placeholder="주소·메모 (선택)" maxlength="80" style="margin-top:8px" />
           </div>
           <div class="field">
@@ -594,6 +612,7 @@
     editingId=null; draft={lat:null,lng:null,cat:null,seasons:[],times:[],amenities:[],photo:''};
     document.getElementById('formTitle').textContent='새로운 장소';
     ['fName','fAddr','fGood','fBad'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('addrSearch').value=''; clearResults();
     document.getElementById('deleteBtn').classList.add('hidden');
     syncPhoto(); syncOpts(); syncLoc(); clearDraftMarker(); validate(); showPanel('form');
   }
@@ -604,6 +623,7 @@
     document.getElementById('formTitle').textContent='장소 수정';
     document.getElementById('fName').value=p.name||''; document.getElementById('fAddr').value=p.addr||'';
     document.getElementById('fGood').value=p.good||''; document.getElementById('fBad').value=p.bad||'';
+    document.getElementById('addrSearch').value=''; clearResults();
     document.getElementById('deleteBtn').classList.remove('hidden');
     syncPhoto(); syncOpts(); syncLoc(); setDraftMarker(p.lat,p.lng); validate(); showPanel('form');
   }
@@ -641,6 +661,42 @@
     else{pick.classList.remove('set');txt.textContent='지도에서 위치를 눌러 주세요';}
   }
   function setDraftLatLng(lat,lng){draft.lat=lat;draft.lng=lng;setDraftMarker(lat,lng);syncLoc();validate();}
+
+  /* ---------- address search (OpenStreetMap Nominatim) ---------- */
+  function showResults(html){const el=document.getElementById('searchResults');el.innerHTML=html;el.classList.add('on');}
+  function clearResults(){const el=document.getElementById('searchResults');el.innerHTML='';el.classList.remove('on');}
+  async function geocode(){
+    const q=document.getElementById('addrSearch').value.trim();
+    if(!q){return;}
+    showResults('<div class="search-item msg">검색 중…</div>');
+    try{
+      const url='https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6'
+        +'&accept-language=ko&countrycodes=kr&q='+encodeURIComponent(q);
+      const res=await fetch(url,{headers:{'Accept':'application/json'}});
+      if(!res.ok) throw new Error('http');
+      const data=await res.json();
+      if(!data.length){showResults('<div class="search-item msg">결과가 없어요. 더 간단히(예: 동네 + 장소 이름)으로 검색해 보세요.</div>');return;}
+      const el=document.getElementById('searchResults'); el.innerHTML='';
+      data.forEach(r=>{
+        const full=r.display_name||'';
+        const name=full.split(',')[0];
+        const item=document.createElement('div'); item.className='search-item';
+        item.innerHTML=`<div class="si-name">${esc(name)}</div><div class="si-sub">${esc(full)}</div>`;
+        item.onclick=()=>{
+          const lat=parseFloat(r.lat), lng=parseFloat(r.lon);
+          setDraftLatLng(lat,lng);
+          map.setView([lat,lng],16);
+          const addr=document.getElementById('fAddr');
+          if(!addr.value.trim()) addr.value=full;
+          clearResults();
+        };
+        el.appendChild(item);
+      });
+      el.classList.add('on');
+    }catch(e){
+      showResults('<div class="search-item msg">검색에 실패했어요. 잠시 후 다시 시도하거나, 지도를 직접 눌러 위치를 정해 주세요.</div>');
+    }
+  }
   function setDraftMarker(lat,lng){
     const ci=draft.cat?catInfo(draft.cat):null; const color=ci?ci.color:'var(--coral)'; const em=ci?ci.emoji:'📍';
     if(!draftMarker){draftMarker=L.marker([lat,lng],{icon:makeIcon(color,em,true,true),draggable:true,zIndexOffset:1000}).addTo(map);
@@ -819,6 +875,8 @@
     document.getElementById('fPhoto').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;
       try{draft.photo=await downscale(f);syncPhoto();}catch(err){toast('사진을 불러오지 못했어요');}e.target.value='';});
     document.getElementById('photoClear').onclick=()=>{draft.photo='';syncPhoto();};
+    document.getElementById('addrSearchBtn').onclick=geocode;
+    document.getElementById('addrSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocode();}});
     document.getElementById('settingsBtn').onclick=openSettings;
     document.getElementById('settingsClose').onclick=()=>showPanel('list');
     document.getElementById('modeSolo').onclick=setSolo;
