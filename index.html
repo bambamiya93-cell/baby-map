@@ -28,7 +28,7 @@
     --sage:#6B9080; --sage-deep:#4F6F61;
     --spring:#8FBF7F; --summer:#F0BF47; --fall:#E2873A; --winter:#7FA8C9; --always:#B49FD0;
     --good-wash:#EAF4ED; --bad-wash:#FAF0E1;
-    --r-lg:20px; --r-md:14px; --r-sm:10px;
+    --r-lg:20px; --r-md:14px; --r-sm:10px; --map-h:36vh;
     --shadow:0 10px 30px -12px rgba(33,48,42,.28); --shadow-soft:0 4px 14px -6px rgba(33,48,42,.18);
     --display:'Jua',system-ui,sans-serif; --body:'Pretendard',system-ui,sans-serif; --hand:'Gaegu',cursive;
   }
@@ -65,14 +65,14 @@
   .install-btn.show{display:inline-flex}
 
   .main{flex:1;display:flex;min-height:0}
-  .map-wrap{flex:1.25;position:relative;min-width:0}
+  .map-wrap{flex:1;position:relative;min-width:0}
   #map{position:absolute;inset:0;background:#dfe7df}
   .map-hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:rgba(33,48,42,.86);
     color:#fff;font-size:13px;font-weight:600;padding:9px 16px;border-radius:999px;z-index:450;display:none;
     align-items:center;gap:8px;box-shadow:var(--shadow);pointer-events:none}
   .map-hint.on{display:flex}
 
-  .panel{flex:.92;max-width:440px;min-width:344px;background:var(--surface);border-left:1px solid var(--line);
+  .panel{flex:1;max-width:480px;min-width:344px;background:var(--surface);border-left:1px solid var(--line);
     display:flex;flex-direction:column;min-height:0}
 
   .filters{padding:12px 14px 10px;border-bottom:1px solid var(--line-soft);display:flex;gap:7px;overflow-x:auto;
@@ -231,11 +231,22 @@
 
   .hidden{display:none !important}
 
+  /* map collapse toggle (mobile only) */
+  .map-toggle{display:none}
+
   @media (max-width:780px){
     .main{flex-direction:column}
-    .map-wrap{flex:none;height:40vh}
-    .panel{max-width:none;min-width:0;border-left:none;border-top:1px solid var(--line);flex:1}
+    .map-wrap{flex:none;height:var(--map-h);overflow:hidden;transition:height .25s ease}
+    .main.map-collapsed .map-wrap{height:0}
+    .panel{max-width:none;min-width:0;border-left:none;border-top:none;flex:1;min-height:0}
     .brand-sub{display:none}
+    .map-toggle{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:none;
+      width:100%;height:36px;border:none;border-top:1px solid var(--line);background:var(--surface);
+      color:var(--ink-soft);font-family:var(--body);font-weight:700;font-size:13px;
+      box-shadow:0 -3px 10px -8px rgba(33,48,42,.25);position:relative;z-index:500;-webkit-tap-highlight-color:transparent}
+    .map-toggle:active{background:var(--surface-warm)}
+    .mt-ic{display:inline-block;font-size:10px;color:var(--ink-faint);transition:transform .25s ease}
+    .main.map-collapsed .mt-ic{transform:rotate(180deg)}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;scroll-behavior:auto !important}}
 </style>
@@ -261,6 +272,10 @@
       <div id="map"></div>
       <div class="map-hint" id="mapHint">📍 지도를 눌러 위치를 정해 주세요</div>
     </div>
+
+    <button class="map-toggle" id="mapToggle" type="button" aria-expanded="true" aria-label="지도 접기/펼치기">
+      <span class="mt-ic">▲</span><span class="mt-tx">지도 접기</span>
+    </button>
 
     <aside class="panel">
       <!-- LIST -->
@@ -859,6 +874,26 @@
   }
   function registerSW(){ if('serviceWorker' in navigator){ try{navigator.serviceWorker.register('service-worker.js').catch(()=>{});}catch(e){} } }
 
+  /* ---------- map collapse toggle (mobile) ---------- */
+  function setupMapSheet(){
+    const btn=document.getElementById('mapToggle');
+    const main=document.querySelector('.main');
+    const wrap=document.querySelector('.map-wrap');
+    if(!btn||!main) return;
+    const tx=btn.querySelector('.mt-tx');
+    let raf=null;
+    function invalidateSoon(){ if(raf)return; raf=requestAnimationFrame(()=>{raf=null; map&&map.invalidateSize();}); }
+    function apply(){
+      const collapsed=main.classList.contains('map-collapsed');
+      btn.setAttribute('aria-expanded',String(!collapsed));
+      if(tx) tx.textContent=collapsed?'지도 펼치기':'지도 접기';
+      invalidateSoon();
+    }
+    btn.addEventListener('click',()=>{ main.classList.toggle('map-collapsed'); apply(); });
+    wrap&&wrap.addEventListener('transitionend',e=>{ if(e.propertyName==='height') invalidateSoon(); });
+    apply();
+  }
+
   /* ---------- utils ---------- */
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
   let toastT; function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');
@@ -889,7 +924,7 @@
   }
 
   /* ---------- go ---------- */
-  initMap(); buildOpts(); wire(); setupInstall(); registerSW();
+  initMap(); buildOpts(); wire(); setupInstall(); setupMapSheet(); registerSW();
   load().then(()=>{
     renderAll();
     if(places.length){const b=L.latLngBounds(places.map(p=>[p.lat,p.lng]));map.fitBounds(b.pad(0.3),{maxZoom:14});}
